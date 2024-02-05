@@ -32,22 +32,30 @@ struct GLFONScontext {
 	int width, height;
 };
 typedef struct GLFONScontext GLFONScontext;
-
+#include "error.h"
 static int glfons__renderCreate(void* userPtr, int width, int height)
 {
+	
+	GetError();
 	GLFONScontext* gl = (GLFONScontext*)userPtr;
 	// Create may be called multiple times, delete existing texture.
 	if (gl->tex != 0) {
 		glDeleteTextures(1, &gl->tex);
 		gl->tex = 0;
 	}
+	
+	GetError();
+	
 	glGenTextures(1, &gl->tex);
 	if (!gl->tex) return 0;
 	gl->width = width;
 	gl->height = height;
 	glBindTexture(GL_TEXTURE_2D, gl->tex);
+	GetError();
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, gl->width, gl->height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, 0);
+	GetError();
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	GetError();
 	return 1;
 }
 
@@ -105,9 +113,10 @@ static void glfons__renderDelete(void* userPtr)
 	free(gl);
 }
 
-
+#include "error.h"
 FONScontext* glfonsCreate(int width, int height, int flags)
 {
+	GetError();
 	FONSparams params;
 	GLFONScontext* gl;
 

@@ -17,7 +17,7 @@
 //
 #ifndef GL3COREFONTSTASH_H
 #define GL3COREFONTSTASH_H
-
+//#include "log.h"
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -43,9 +43,11 @@ FONS_DEF unsigned int glfonsRGBA(unsigned char r, unsigned char g, unsigned char
 #	define GLFONS_TCOORD_ATTRIB 1
 #endif
 
-#ifndef GLFONS_COLOR_ATTRIB
-#	define GLFONS_COLOR_ATTRIB 2
-#endif
+//#ifndef GLFONS_COLOR_ATTRIB
+//#	define GLFONS_COLOR_ATTRIB 2
+//#endif
+
+#include "error.h"
 
 struct GLFONScontext {
 	GLuint tex;
@@ -53,7 +55,16 @@ struct GLFONScontext {
 	GLuint vertexArray;
 	GLuint vertexBuffer;
 	GLuint tcoordBuffer;
-	GLuint colorBuffer;
+//	GLuint colorBuffer;
+	
+	// marek added these
+	// to get away from having
+	// global variables with
+	// these values.
+	GLuint VERTEX_ATTRIB;
+	GLuint TCOORD_ATTRIB;
+//	GLuint COLOR_ATTRIB;
+	
 };
 typedef struct GLFONScontext GLFONScontext;
 
@@ -66,32 +77,54 @@ static int glfons__renderCreate(void* userPtr, int width, int height)
 		glDeleteTextures(1, &gl->tex);
 		gl->tex = 0;
 	}
-
+	GetError();
+	
 	glGenTextures(1, &gl->tex);
+	
+	//Log::e() << "Font texture: " << gl->tex;
 	if (!gl->tex) return 0;
-
+	GetError();
+	
+#ifndef MZGL_GL2
 	if (!gl->vertexArray) glGenVertexArrays(1, &gl->vertexArray);
+	GetError();
 	if (!gl->vertexArray) return 0;
 
+	
+	GetError();
 	glBindVertexArray(gl->vertexArray);
-
+	GetError();
+#endif
+	
 	if (!gl->vertexBuffer) glGenBuffers(1, &gl->vertexBuffer);
 	if (!gl->vertexBuffer) return 0;
-
+	GetError();
 	if (!gl->tcoordBuffer) glGenBuffers(1, &gl->tcoordBuffer);
 	if (!gl->tcoordBuffer) return 0;
-
-	if (!gl->colorBuffer) glGenBuffers(1, &gl->colorBuffer);
-	if (!gl->colorBuffer) return 0;
-
+	GetError();
+//	if (!gl->colorBuffer) glGenBuffers(1, &gl->colorBuffer);
+//	if (!gl->colorBuffer) return 0;
+	GetError();
 	gl->width = width;
 	gl->height = height;
 	glBindTexture(GL_TEXTURE_2D, gl->tex);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, gl->width, gl->height, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+	
+#ifdef MZGL_GL2
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, gl->width, gl->height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, 0);
+#else
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, gl->width, gl->height, 0, GL_RED, GL_UNSIGNED_BYTE, NULL);
+	//    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleRgbaParams);
+	static GLint swizzleRgbaParams[4] = {GL_ONE, GL_ONE, GL_ONE, GL_RED};
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_R, swizzleRgbaParams[0]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_G, swizzleRgbaParams[1]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_B, swizzleRgbaParams[2]);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_A, swizzleRgbaParams[3]);
+
+#endif
+	GetError();
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    static GLint swizzleRgbaParams[4] = {GL_ONE, GL_ONE, GL_ONE, GL_RED};
-    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_SWIZZLE_RGBA, swizzleRgbaParams);
+	GetError();
 
 	return 1;
 }
@@ -102,8 +135,8 @@ static int glfons__renderResize(void* userPtr, int width, int height)
 	return glfons__renderCreate(userPtr, width, height);
 }
 
-static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* data)
-{
+static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* data) {
+	
 	GLFONScontext* gl = (GLFONScontext*)userPtr;
 	int w = rect[2] - rect[0];
 	int h = rect[3] - rect[1];
@@ -124,51 +157,53 @@ static void glfons__renderUpdate(void* userPtr, int* rect, const unsigned char* 
 	glPixelStorei(GL_UNPACK_SKIP_PIXELS, rect[0]);
 	glPixelStorei(GL_UNPACK_SKIP_ROWS, rect[1]);
 
+#ifdef MZGL_GL2
+	glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_ALPHA,GL_UNSIGNED_BYTE, data);
+#else
 	glTexSubImage2D(GL_TEXTURE_2D, 0, rect[0], rect[1], w, h, GL_RED, GL_UNSIGNED_BYTE, data);
+#endif
 
 	// Pop old values
 	glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
 	glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
 	glPixelStorei(GL_UNPACK_SKIP_PIXELS, skipPixels);
 	glPixelStorei(GL_UNPACK_SKIP_ROWS, skipRows);
+
 }
 
-static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, const unsigned int* colors, int nverts)
-{
-	GLFONScontext* gl = (GLFONScontext*)userPtr;
-	if (gl->tex == 0 || gl->vertexArray == 0) return;
 
+static void glfons__renderDraw(void* userPtr, const float* verts, const float* tcoords, int nverts) {
+	GLFONScontext* gl = (GLFONScontext*)userPtr;
+#ifndef MZGL_GL2
+	if (gl->tex == 0 || gl->vertexArray == 0) return;
+#endif
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, gl->tex);
 
+#ifndef MZGL_GL2
 	glBindVertexArray(gl->vertexArray);
-
-	glEnableVertexAttribArray(GLFONS_VERTEX_ATTRIB);
+#endif
+	glEnableVertexAttribArray(gl->VERTEX_ATTRIB);
 	glBindBuffer(GL_ARRAY_BUFFER, gl->vertexBuffer);
 	glBufferData(GL_ARRAY_BUFFER, nverts * 2 * sizeof(float), verts, GL_DYNAMIC_DRAW);
-	glVertexAttribPointer(GLFONS_VERTEX_ATTRIB, 2, GL_FLOAT, GL_FALSE, 0, NULL);
+	glVertexAttribPointer(gl->VERTEX_ATTRIB, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 
-	glEnableVertexAttribArray(GLFONS_TCOORD_ATTRIB);
+	glEnableVertexAttribArray(gl->TCOORD_ATTRIB);
 	glBindBuffer(GL_ARRAY_BUFFER, gl->tcoordBuffer);
 	glBufferData(GL_ARRAY_BUFFER, nverts * 2 * sizeof(float), tcoords, GL_DYNAMIC_DRAW);
-	glVertexAttribPointer(GLFONS_TCOORD_ATTRIB, 2, GL_FLOAT, GL_FALSE, 0, NULL);
-
-	glEnableVertexAttribArray(GLFONS_COLOR_ATTRIB);
-	glBindBuffer(GL_ARRAY_BUFFER, gl->colorBuffer);
-	glBufferData(GL_ARRAY_BUFFER, nverts * sizeof(unsigned int), colors, GL_DYNAMIC_DRAW);
-	glVertexAttribPointer(GLFONS_COLOR_ATTRIB, 4, GL_UNSIGNED_BYTE, GL_FALSE, 0, NULL);
+	glVertexAttribPointer(gl->TCOORD_ATTRIB, 2, GL_FLOAT, GL_FALSE, 0, NULL);
 
 	glDrawArrays(GL_TRIANGLES, 0, nverts);
 
-	glDisableVertexAttribArray(GLFONS_VERTEX_ATTRIB);
-	glDisableVertexAttribArray(GLFONS_TCOORD_ATTRIB);
-	glDisableVertexAttribArray(GLFONS_COLOR_ATTRIB);
+	glDisableVertexAttribArray(gl->VERTEX_ATTRIB);
+	glDisableVertexAttribArray(gl->TCOORD_ATTRIB);
 
+#ifndef MZGL_GL2
 	glBindVertexArray(0);
+#endif
 }
 
-static void glfons__renderDelete(void* userPtr)
-{
+static void glfons__renderDelete(void* userPtr) {
 	GLFONScontext* gl = (GLFONScontext*)userPtr;
 	if (gl->tex != 0) {
 		glDeleteTextures(1, &gl->tex);
@@ -185,11 +220,6 @@ static void glfons__renderDelete(void* userPtr)
 	if (gl->tcoordBuffer != 0) {
 		glDeleteBuffers(1, &gl->tcoordBuffer);
 		gl->tcoordBuffer = 0;
-	}
-
-	if (gl->colorBuffer != 0) {
-		glDeleteBuffers(1, &gl->colorBuffer);
-		gl->colorBuffer = 0;
 	}
 
 	if (gl->vertexArray != 0) {
@@ -219,7 +249,7 @@ FONS_DEF FONScontext* glfonsCreate(int width, int height, int flags)
 	params.renderDraw = glfons__renderDraw; 
 	params.renderDelete = glfons__renderDelete;
 	params.userPtr = gl;
-
+GetError();
 	return fonsCreateInternal(&params);
 
 error:
